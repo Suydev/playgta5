@@ -6,9 +6,9 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
-SITE = ROOT / 'mirror' / 'playgta5.com'
+SITE = ROOT / 'mirror' / 'gta.deloskiyt.pl'
 STATE = ROOT / 'snapshot'
-ORIGIN = 'https://playgta5.com'
+ORIGIN = 'https://gta.deloskiyt.pl'
 BUILD = '/b/8b0b5899ed'
 RATE = 24 * 1024 * 1024
 WORKERS = 3
@@ -23,11 +23,13 @@ failures = []
 STATE.mkdir(exist_ok=True)
 SITE.mkdir(parents=True, exist_ok=True)
 
+
 def emit(message):
     with lock:
         with (STATE / 'download.log').open('a', encoding='utf-8') as out:
             out.write(time.strftime('%Y-%m-%d %H:%M:%S') + ' ' + message + '\n')
     print(message, flush=True)
+
 
 def throttle(n):
     global rate_next, received
@@ -40,6 +42,7 @@ def throttle(n):
             time.sleep(delay)
     with lock:
         received += n
+
 
 def download(task):
     global completed
@@ -105,12 +108,14 @@ def download(task):
     with lock:
         failures.append({'path': path, 'url': url, 'error': str(exc) if 'exc' in locals() else 'see log'})
 
+
 def add_existing(path, source):
     target = SITE / path.lstrip('/')
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / source, target)
     b = target.read_bytes()
     records[path] = {'path': path, 'url': ORIGIN + path, 'bytes': len(b), 'sha256': hashlib.sha256(b).hexdigest(), 'manifest_bytes': None}
+
 
 def main():
     global records
@@ -192,6 +197,7 @@ def main():
     (STATE / 'failures.json').write_text(json.dumps(failures, indent=2), encoding='utf-8')
     emit('FINISHED downloaded=%d failures=%d expanded_shader_files=%d' % (completed, len(failures), expanded))
     return 1 if failures else 0
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

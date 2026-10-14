@@ -17,9 +17,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-MIRROR = ROOT / "mirror" / "playgta5.com"
+MIRROR = ROOT / "mirror" / "gta.deloskiyt.pl"
 SNAPSHOT = ROOT / "snapshot"
-BASE = "https://playgta5.com"
+BASE = "https://gta.deloskiyt.pl"
 UA = "curl/8.0 public-mirror-discovery"
 TIMEOUT = 25
 MAX_WORKERS = 16
@@ -32,11 +32,13 @@ lock = threading.Lock()
 attempts = []
 added = []
 
+
 def norm_path(path):
     path = urllib.parse.unquote(urllib.parse.urlsplit(path).path)
     if not path.startswith("/"):
         path = "/" + path
     return path
+
 
 def request(path):
     url = BASE + path
@@ -60,6 +62,7 @@ def request(path):
         attempts.append({k: v for k, v in out.items() if k != "body"})
     return out
 
+
 def fallback(result):
     body = result.get("body", b"")
     if hashlib.sha256(body).hexdigest() == homepage_hash:
@@ -69,23 +72,30 @@ def fallback(result):
         return "homepage-signature"
     return None
 
+
 class Refs(html.parser.HTMLParser):
     def __init__(self):
         super().__init__(); self.refs = []
+
     def handle_starttag(self, tag, attrs):
         for k, v in attrs:
             if k.lower() in ("href", "src", "action", "poster") and v:
                 self.refs.append(v)
 
+
 def same_origin_refs(path, body, content_type):
     if not ("text/" in content_type or "javascript" in content_type or path.endswith((".js", ".css", ".html", ".xml", ".webmanifest"))):
         return set()
-    try: text = body.decode("utf-8", "ignore")
-    except Exception: return set()
+    try:
+        text = body.decode("utf-8", "ignore")
+    except Exception:
+        return set()
     p = Refs()
-    try: p.feed(text)
-    except Exception: pass
-    p.refs += re.findall(r"(?:['\"])(/[^'\"\\\\?# ]+|https?://playgta5\.com/[^'\"\\\\?# ]+)", text)
+    try:
+        p.feed(text)
+    except Exception:
+        pass
+    p.refs += re.findall(r"(?:['\"])(/[^'\"\\?# ]+|https?://playgta5\.com/[^'\"\\?# ]+)", text)
     out = set()
     for ref in p.refs:
         u = urllib.parse.urljoin(BASE + path, ref)
@@ -96,12 +106,15 @@ def same_origin_refs(path, body, content_type):
                 out.add(clean)
     return out
 
+
 def save_addition(result, provenance):
     path, body = result["path"], result["body"]
-    if path in known_paths or fallback(result): return False
+    if path in known_paths or fallback(result):
+        return False
     target = MIRROR.joinpath(*path.lstrip("/").split("/"))
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists(): return False
+    if target.exists():
+        return False
     target.write_bytes(body)
     item = {"path": path, "url": result["url"], "bytes": len(body),
             "sha256": hashlib.sha256(body).hexdigest(), "content_type": result["content_type"],
@@ -110,15 +123,18 @@ def save_addition(result, provenance):
         added.append(item); known_paths.add(path)
     return True
 
+
 def run_batch(paths, provenance):
     refs = set()
     with futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         for result in pool.map(request, sorted(set(paths))):
             if result.get("status") == 200 and "body" in result:
                 is_dir = result["path"].endswith("/")
-                if not is_dir: save_addition(result, provenance)
+                if not is_dir:
+                    save_addition(result, provenance)
                 refs.update(same_origin_refs(result["path"], result["body"], result["content_type"]))
     return refs
+
 
 # Conventional public discovery endpoints and build references visible in root assets.
 standard = [
@@ -148,7 +164,8 @@ while new_refs and rounds < 4:
 attempts.sort(key=lambda x: x["path"])
 added.sort(key=lambda x: x["path"])
 status_counts = {}
-for x in attempts: status_counts[str(x.get("status"))] = status_counts.get(str(x.get("status")), 0) + 1
+for x in attempts:
+    status_counts[str(x.get("status"))] = status_counts.get(str(x.get("status")), 0) + 1
 report = {
     "base": BASE, "run_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     "user_agent": UA, "network_concurrency": MAX_WORKERS,
@@ -156,8 +173,8 @@ report = {
     "build_ids": builds, "attempt_count": len(attempts), "status_counts": status_counts,
     "added_count": len(added), "added_bytes": sum(x["bytes"] for x in added),
     "attempts": attempts,
-    "coverage": ["robots/sitemaps/icons/web manifests/.well-known security", "runtime source-map candidates", "build-local manifest/service-worker candidates", "one trailing-slash request for every directory derived from the 12,480-path inventory", "same-origin references extracted from successful textual responses"],
-    "limits": ["No authentication, credentials, bypasses, parameter fuzzing, or blind filename dictionaries.", "A non-listing directory response cannot prove undisclosed children absent.", "References embedded only in binary assets or constructed dynamically beyond inspected textual responses are outside this crawl.", "HTTP success is retained only when it is not the known generic homepage fallback; non-200 results are logged but not downloaded."],
+    "coverage": ["robots/sitemaps/icons/web manifests/.well-known security", "runtime source-map candidates", "build-local manifest/service-worker candidates", "one trailing-slash request for every known directory to detect listings", "follow references reachable from same-origin pages"],
+    "limits": ["No authentication, credentials, bypasses, parameter fuzzing, or blind filename dictionaries.", "A non-listing directory response cannot prove undisclosed children absent.", "Static references only; dynamic content is not probed."]
 }
 (SNAPSHOT / "discovery-added.json").write_text(json.dumps(added, indent=2) + "\n", encoding="utf-8")
 (SNAPSHOT / "discovery-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
